@@ -1,2 +1,2 @@
 # cap_pro
-This is a Ai powered code Editor
+This is an Ai powered code Editor
