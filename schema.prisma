@@ -1,0 +1,228 @@
+// =============================================================================
+// AI-Powered Adaptive Competitive Programming Platform
+// Prisma Schema — Layer 5 (Data Layer)
+// =============================================================================
+// Tables:
+//   1. User            — Authentication, profile, and rating data
+//   2. ProblemHistory   — AI-generated problems linked to users
+//   3. Submission       — Code submissions with verdicts and AI feedback
+//   4. ReviewSchedule   — Spaced repetition scheduling (pin for review)
+//   5. ActivityLog      — User activity tracking for heatmap & stats
+// =============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// =============================================================================
+// ENUMS
+// =============================================================================
+
+/// Difficulty tiers for generated problems.
+/// Maps directly to scoring multipliers in the ranking system.
+enum Difficulty {
+  EASY    // Multiplier: 1x
+  MEDIUM  // Multiplier: 2x
+  HARD    // Multiplier: 3x
+}
+
+/// Submission verdict returned by Judge0 CE.
+/// Used to determine if a problem counts as "solved" for ranking.
+enum Verdict {
+  ACCEPTED
+  WRONG_ANSWER
+  TIME_LIMIT_EXCEEDED
+  MEMORY_LIMIT_EXCEEDED
+  RUNTIME_ERROR
+  COMPILATION_ERROR
+  PENDING
+}
+
+/// Supported programming languages.
+/// Must stay in sync with Judge0 language IDs in the backend config.
+enum Language {
+  C
+  CPP
+  JAVA
+  PYTHON
+}
+
+/// Spaced repetition intervals.
+/// Users pin problems to revisit after a set time window.
+enum ReviewInterval {
+  TWO_WEEKS  // 14 days
+  ONE_MONTH  // 30 days
+}
+
+/// Types of activity events logged for the stats dashboard.
+enum ActivityType {
+  PROBLEM_GENERATED
+  SUBMISSION_MADE
+  PROBLEM_SOLVED
+  REVIEW_COMPLETED
+  STREAK_EXTENDED
+}
+
+// =============================================================================
+// TABLE 1: User
+// =============================================================================
+// Stores authentication credentials and profile data.
+// `rating` is a computed score updated on each submission.
+// `streak` tracks consecutive days of activity (resets on inactivity).
+// =============================================================================
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  username     String   @unique
+  passwordHash String   @map("password_hash")
+  rating       Int      @default(0)     // Composite score: problems × difficulty + quality + streak
+  streak       Int      @default(0)     // Consecutive active days
+  lastActiveAt DateTime? @map("last_active_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt      @map("updated_at")
+
+  // Relations
+  problemHistory ProblemHistory[]
+  submissions    Submission[]
+  reviewSchedule ReviewSchedule[]
+  activityLog    ActivityLog[]
+
+  @@map("users")
+}
+
+// =============================================================================
+// TABLE 2: ProblemHistory
+// =============================================================================
+// Every AI-generated problem is stored here to:
+//   1. Prevent the AI from generating duplicate problems for the same user.
+//   2. Allow users to revisit previously attempted problems.
+//   3. Provide training data for future model fine-tuning.
+//
+// `aiPrompt`    — The exact LangChain prompt sent to the LLM.
+// `aiResponse`  — The raw structured JSON returned by the LLM.
+// =============================================================================
+
+model ProblemHistory {
+  id          String     @id @default(uuid())
+  userId      String     @map("user_id")
+  title       String
+  description String     @db.Text   // Full problem statement (can be long)
+  difficulty  Difficulty
+  topic       String                // e.g., "dynamic-programming", "graphs"
+  examples    Json                  // Array of {input, output, explanation}
+  constraints String     @db.Text   // Time/space constraints
+  testCases   Json       @map("test_cases")   // Array of {input, expectedOutput}
+  aiPrompt    String     @db.Text   @map("ai_prompt")
+  aiResponse  Json       @map("ai_response")  // Full LLM response for audit
+  createdAt   DateTime   @default(now()) @map("created_at")
+
+  // Relations
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  submissions Submission[]
+  reviews     ReviewSchedule[]
+
+  // Indexes: Lookups by user + topic + difficulty are frequent
+  // O(log n) lookup via B-tree index
+  @@index([userId, topic, difficulty])
+  @@map("problem_history")
+}
+
+// =============================================================================
+// TABLE 3: Submission
+// =============================================================================
+// Records every code submission against a problem.
+// `verdict`, `runtime`, `memory` come from Judge0.
+// `aiScore`, `aiFeedback` come from the AI Evaluator (Phase 5).
+//
+// Big-O note: Queries for "latest submissions by user" use the composite
+// index on [userId, createdAt] for O(log n) lookups.
+// =============================================================================
+
+model Submission {
+  id          String    @id @default(uuid())
+  userId      String    @map("user_id")
+  problemId   String    @map("problem_id")
+  language    Language
+  sourceCode  String    @db.Text   @map("source_code")
+  verdict     Verdict   @default(PENDING)
+  runtime     Float?               // Execution time in seconds (from Judge0)
+  memory      Float?               // Memory usage in KB (from Judge0)
+  aiScore     Float?    @map("ai_score")      // 0-100 quality score from AI Evaluator
+  aiFeedback  Json?     @map("ai_feedback")   // {timeComplexity, spaceComplexity, suggestions}
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  // Relations
+  user    User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  problem ProblemHistory @relation(fields: [problemId], references: [id], onDelete: Cascade)
+
+  // Indexes
+  @@index([userId, createdAt])           // User's submission timeline
+  @@index([userId, verdict])             // Filter by verdict (e.g., ACCEPTED only)
+  @@index([problemId])                   // All submissions for a problem
+  @@map("submissions")
+}
+
+// =============================================================================
+// TABLE 4: ReviewSchedule
+// =============================================================================
+// Implements spaced repetition (Phase 6).
+// Users "pin" problems they want to revisit. A daily BullMQ cron job
+// checks `reviewAt` and enqueues reminder notifications.
+//
+// `interval`  — TWO_WEEKS or ONE_MONTH (user-selected).
+// `completed` — Flipped to true when the user re-solves the problem.
+// =============================================================================
+
+model ReviewSchedule {
+  id         String         @id @default(uuid())
+  userId     String         @map("user_id")
+  problemId  String         @map("problem_id")
+  reviewAt   DateTime       @map("review_at")     // When to remind the user
+  interval   ReviewInterval                        // TWO_WEEKS | ONE_MONTH
+  completed  Boolean        @default(false)
+  createdAt  DateTime       @default(now()) @map("created_at")
+
+  // Relations
+  user    User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  problem ProblemHistory @relation(fields: [problemId], references: [id], onDelete: Cascade)
+
+  // Indexes: The cron job queries pending reviews by date
+  @@index([userId, completed])
+  @@index([reviewAt, completed])   // O(log n) scan for due reviews
+  @@map("review_schedule")
+}
+
+// =============================================================================
+// TABLE 5: ActivityLog
+// =============================================================================
+// Powers the GitHub-style activity heatmap on the stats dashboard (Phase 8).
+// Each row represents a discrete user event.
+//
+// `metadata` stores event-specific data as JSON (flexible schema):
+//   - PROBLEM_GENERATED: {topic, difficulty}
+//   - SUBMISSION_MADE: {language, verdict}
+//   - PROBLEM_SOLVED: {problemId, aiScore}
+//   - REVIEW_COMPLETED: {problemId}
+//   - STREAK_EXTENDED: {newStreak}
+// =============================================================================
+
+model ActivityLog {
+  id        String       @id @default(uuid())
+  userId    String       @map("user_id")
+  type      ActivityType
+  metadata  Json         @default("{}")   // Event-specific payload
+  createdAt DateTime     @default(now()) @map("created_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Index: Heatmap queries filter by user + date range → O(log n)
+  @@index([userId, createdAt])
+  @@map("activity_log")
+}

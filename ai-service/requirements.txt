@@ -1,0 +1,24 @@
+# =============================================================================
+# AI-Powered Adaptive Competitive Programming Platform
+# AI Service Dependencies (Layer 3: Python FastAPI + LangChain)
+# =============================================================================
+
+# -- Web Framework --
+fastapi
+uvicorn[standard]
+
+# -- AI / LLM --
+langchain
+langchain-community
+langchain-huggingface
+huggingface-hub
+
+# -- Data Validation --
+pydantic
+pydantic-settings
+
+# -- HTTP Client (for internal communication with backend) --
+httpx
+
+# -- Environment --
+python-dotenv

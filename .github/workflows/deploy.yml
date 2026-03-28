@@ -1,0 +1,32 @@
+name: Deploy to AWS EC2
+
+# Triggers the deployment pipeline automatically on every push to the `main` branch
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Deploy to Server via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            # Navigate to the target application directory
+            cd /home/ubuntu/codeforge
+
+            # Pull the latest changes directly from GitHub
+            git pull origin main
+
+            # Rebuild and restart only the updated microservices with no downtime
+            docker-compose -f docker-compose.prod.yml up -d --build

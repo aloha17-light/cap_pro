@@ -1,0 +1,40 @@
+version: '3.8'
+
+# =============================================================================
+# Production Docker Compose for AWS EC2 (t2.micro Free Tier)
+# =============================================================================
+# We ONLY spin up the NodeJS Backend and Python AI Service here.
+# Databases and Judge0 are abstracted to external managed Free Tier services 
+# (Supabase, Upstash, RapidAPI) to prevent RAM OOM (Out of Memory) crashes on AWS.
+# =============================================================================
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: codeforge-backend
+    restart: always
+    ports:
+      - "5000:5000"
+    env_file:
+      - ./backend/.env
+    networks:
+      - prod-network
+
+  ai-service:
+    build:
+      context: ./ai-service
+      dockerfile: Dockerfile
+    container_name: codeforge-ai
+    restart: always
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./ai-service/.env
+    networks:
+      - prod-network
+
+networks:
+  prod-network:
+    driver: bridge

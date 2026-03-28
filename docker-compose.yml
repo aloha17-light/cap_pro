@@ -1,0 +1,158 @@
+# =============================================================================
+# AI-Powered Adaptive Competitive Programming Platform
+# Docker Compose Orchestration (Layer 6: Infrastructure)
+# =============================================================================
+# Services:
+#   1. postgres       - Primary application database (Layer 5)
+#   2. redis          - Cache, sessions, leaderboard, rate limiting (Layer 5)
+#   3. judge0-db      - Isolated Postgres for Judge0 CE (Layer 4)
+#   4. judge0-server  - Judge0 CE API server (Layer 4)
+#   5. judge0-worker  - Judge0 CE background workers (Layer 4)
+# =============================================================================
+
+x-judge0-env: &judge0-env
+  # -- Judge0 Database --
+  POSTGRES_HOST: judge0-db
+  POSTGRES_PORT: 5432
+  POSTGRES_DB: ${JUDGE0_DB_NAME:-judge0}
+  POSTGRES_USER: ${JUDGE0_DB_USER:-judge0}
+  POSTGRES_PASSWORD: ${JUDGE0_DB_PASSWORD:-judge0_secret}
+  # -- Judge0 Redis --
+  REDIS_HOST: redis
+  REDIS_PORT: 6379
+  REDIS_PASSWORD: ${REDIS_PASSWORD:-redis_secret}
+  # -- Judge0 Config --
+  ENABLE_WAIT_RESULT: "true"
+  ENABLE_COMPILER_OPTIONS: "true"
+  ALLOWED_LANGUAGES_FOR_COMPILE_OPTIONS: "all"
+
+services:
+  # ===========================================================================
+  # Layer 5: PostgreSQL — Primary Application Database
+  # ===========================================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: platform-postgres
+    restart: unless-stopped
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-competitive_platform}
+      POSTGRES_USER: ${POSTGRES_USER:-platform_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-platform_secret}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - platform-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-platform_user} -d ${POSTGRES_DB:-competitive_platform}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ===========================================================================
+  # Layer 5: Redis — Cache, Sessions, Leaderboard (Sorted Set), Rate Limits
+  # ===========================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: platform-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    command: redis-server --requirepass ${REDIS_PASSWORD:-redis_secret} --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - platform-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-redis_secret}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ===========================================================================
+  # Layer 4: Judge0 — Isolated PostgreSQL for Judge0 CE
+  # ===========================================================================
+  judge0-db:
+    image: postgres:16-alpine
+    container_name: judge0-postgres
+    restart: unless-stopped
+    ports:
+      - "${JUDGE0_DB_PORT:-5433}:5432"
+    environment:
+      POSTGRES_DB: ${JUDGE0_DB_NAME:-judge0}
+      POSTGRES_USER: ${JUDGE0_DB_USER:-judge0}
+      POSTGRES_PASSWORD: ${JUDGE0_DB_PASSWORD:-judge0_secret}
+    volumes:
+      - judge0_postgres_data:/var/lib/postgresql/data
+    networks:
+      - platform-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${JUDGE0_DB_USER:-judge0} -d ${JUDGE0_DB_NAME:-judge0}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ===========================================================================
+  # Layer 4: Judge0 CE — Code Execution API Server
+  # ===========================================================================
+  # Receives submission requests from the Node.js backend (Layer 2) and
+  # enqueues them for the worker. Exposes REST API on port 2358.
+  # ===========================================================================
+  judge0-server:
+    image: judge0/judge0:1.13.1
+    container_name: judge0-server
+    restart: unless-stopped
+    ports:
+      - "${JUDGE0_PORT:-2358}:2358"
+    environment:
+      <<: *judge0-env
+    depends_on:
+      judge0-db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - platform-network
+    privileged: true  # Required by Judge0 for sandboxed execution via isolate
+
+  # ===========================================================================
+  # Layer 4: Judge0 CE — Background Worker
+  # ===========================================================================
+  # Processes queued submissions. Runs the same image with a different
+  # entrypoint. Scales horizontally via `docker compose up --scale`.
+  # ===========================================================================
+  judge0-worker:
+    image: judge0/judge0:1.13.1
+    container_name: judge0-worker
+    restart: unless-stopped
+    command: ["./scripts/workers"]
+    environment:
+      <<: *judge0-env
+    depends_on:
+      judge0-db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - platform-network
+    privileged: true
+
+# =============================================================================
+# Persistent Volumes
+# =============================================================================
+volumes:
+  postgres_data:
+    name: platform-postgres-data
+  redis_data:
+    name: platform-redis-data
+  judge0_postgres_data:
+    name: judge0-postgres-data
+
+# =============================================================================
+# Shared Network
+# =============================================================================
+networks:
+  platform-network:
+    name: platform-network
+    driver: bridge
