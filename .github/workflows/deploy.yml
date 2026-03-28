@@ -23,10 +23,24 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
             # Navigate to the target application directory
+            mkdir -p /home/ubuntu/codeforge
             cd /home/ubuntu/codeforge
 
+            # Initialize git repo if it doesn't exist (First time deployment)
+            if [ ! -d .git ]; then
+              git init
+              git remote add origin https://github.com/aloha17-light/code_editor.git
+            fi
+
             # Pull the latest changes directly from GitHub
-            git pull origin main
+            git fetch --all
+            git reset --hard origin/main
+
+            # Install Docker Compose if not present (First time deployment)
+            if ! command -v docker-compose &> /dev/null; then
+              sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+              sudo chmod +x /usr/local/bin/docker-compose
+            fi
 
             # Rebuild and restart only the updated microservices with no downtime
-            docker-compose -f docker-compose.prod.yml up -d --build
+            sudo docker-compose -f docker-compose.prod.yml up -d --build
