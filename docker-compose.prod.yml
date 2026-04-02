@@ -19,6 +19,8 @@ services:
       - "5000:5000"
     env_file:
       - ./backend/.env
+    environment:
+      - AI_SERVICE_URL=http://codeforge-ai:8000
     networks:
       - prod-network
 

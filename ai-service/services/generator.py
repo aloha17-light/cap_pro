@@ -23,7 +23,7 @@ load_dotenv()
 HF_TOKEN = os.getenv("HUGGINGFACE_API_KEY")
 
 llm = HuggingFaceEndpoint(
-    repo_id="mistralai/Mistral-7B-Instruct-v0.2",
+    repo_id="deepseek-ai/DeepSeek-R1",
     task="text-generation",
     max_new_tokens=1024,
     temperature=0.3, # Low temp for structured JSON logic
