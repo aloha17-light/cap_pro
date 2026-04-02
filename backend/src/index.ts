@@ -44,11 +44,26 @@ const PORT = process.env.PORT || process.env.BACKEND_PORT || 5000;
 // Security headers (XSS protection, HSTS, content sniffing prevention, etc.)
 app.use(helmet());
 
-// CORS — allow frontend origin (default: http://localhost:3000)
+// CORS — allow frontend origins (localhost for dev, Vercel for production)
+const allowedOrigins = process.env.CORS_ORIGIN
+  ? process.env.CORS_ORIGIN.split(',').map(o => o.trim())
+  : ['http://localhost:3000'];
+
 app.use(
   cors({
-    origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
-    credentials: true, // Allow cookies/auth headers
+    origin: (origin, callback) => {
+      // Allow requests with no origin (mobile apps, curl, etc.)
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      // In production, also allow any *.vercel.app domain
+      if (origin.endsWith('.vercel.app')) {
+        return callback(null, true);
+      }
+      return callback(new Error('Not allowed by CORS'));
+    },
+    credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
     allowedHeaders: ['Content-Type', 'Authorization'],
   })
