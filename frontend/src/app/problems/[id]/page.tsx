@@ -33,9 +33,9 @@ export default function ProblemPage({ params }: { params: { id: string } }) {
         setProblem(res.data.data);
       } catch (err: any) {
         if (err.response?.status === 404) {
-          setError('Problem not found.');
+          setError(err.response?.data?.message || 'Problem not found.');
         } else {
-          setError('Failed to load problem.');
+          setError(err.response?.data?.message || 'Failed to load problem.');
         }
       } finally {
         setLoading(false);

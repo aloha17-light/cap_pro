@@ -71,7 +71,8 @@ export async function getProblemById(id: string, userId: string) {
   });
 
   if (!problem) {
-    throw new AppError('Problem not found', 404);
+    const latest = await prisma.problemHistory.findFirst({ orderBy: { createdAt: 'desc' }});
+    throw new AppError(`Problem not found. Searched ID: ${id}. Latest DB ID: ${latest?.id}`, 404);
   }
 
   // Ensure users only see their own generated problems for now, 
