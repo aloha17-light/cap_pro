@@ -53,7 +53,7 @@ export default function EditorWorkspace({ problemId }: EditorWorkspaceProps) {
       });
       setExecutionResult(res.data.data);
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Execution failed. Judge0 container might be offline.');
+      setError(err.response?.data?.message || 'Execution failed. Execution engine might be offline.');
     } finally {
       setIsExecuting(false);
     }

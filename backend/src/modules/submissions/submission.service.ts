@@ -11,40 +11,21 @@ import { AppError } from '../../lib/errors';
 import { SubmitCodeInput } from './submission.schema';
 import { Language, Verdict } from '@prisma/client';
 
-const JUDGE0_URL = process.env.JUDGE0_API_URL || process.env.JUDGE0_URL || 'http://localhost:2358';
-const JUDGE0_API_KEY = process.env.JUDGE0_API_KEY || ''; // If using managed RapidAPI
-const JUDGE0_HOST = process.env.JUDGE0_HOST || 'judge0-ce.p.rapidapi.com';
+const PISTON_URL = 'https://emkc.org/api/v2/piston/execute';
 
-// Maps our Prisma Language Enums to Judge0 CE internal Language IDs
-function getJudge0LanguageId(lang: Language): number {
+// Maps our Prisma Language Enums to Piston Language strings
+function getPistonLanguage(lang: Language): { language: string, version: string } {
   switch (lang) {
-    case 'C': return 50;
-    case 'CPP': return 54;
-    case 'JAVA': return 62;
-    case 'PYTHON': return 71;
+    case 'C': return { language: 'c', version: '10.2.0' };
+    case 'CPP': return { language: 'cpp', version: '10.2.0' };
+    case 'JAVA': return { language: 'java', version: '15.0.2' };
+    case 'PYTHON': return { language: 'python', version: '3.10.0' };
     default: throw new AppError('Unsupported Language', 400);
   }
 }
 
-// Maps Judge0 status IDs back to our Prisma Database Verdicts
-function mapJudge0StatusToVerdict(statusId: number): Verdict {
-  switch (statusId) {
-    case 3: return 'ACCEPTED';
-    case 4: return 'WRONG_ANSWER';
-    case 5: return 'TIME_LIMIT_EXCEEDED';
-    case 6: return 'COMPILATION_ERROR';
-    case 7: 
-    case 8: 
-    case 9: 
-    case 10:
-    case 11:
-    case 12: return 'RUNTIME_ERROR';
-    default: return 'PENDING';
-  }
-}
-
 export async function processSubmission(userId: string, problemId: string, data: SubmitCodeInput) {
-  // 1. Fetch the Generated Problem (so we can get the AI-generated hidden test cases)
+  // 1. Fetch the Generated Problem
   const problem = await prisma.problemHistory.findUnique({
     where: { id: problemId },
   });
@@ -59,58 +40,72 @@ export async function processSubmission(userId: string, problemId: string, data:
     throw new AppError('Problem has no test cases to evaluate against.', 500);
   }
 
-  // 2. Prepare the Batch Submission Payload for Judge0
-  // Judge0 allows submitting multiple executions at once (Batch Submission).
-  // We send one execution per test case.
-  const languageId = getJudge0LanguageId(data.language);
-  
-  const submissions = testCases.map((tc) => ({
-    language_id: languageId,
-    source_code: data.sourceCode,
-    stdin: tc.input || "",
-    expected_output: tc.expectedOutput || "",
-  }));
+  // 2. Prepare for Piston Execution
+  const pistonLang = getPistonLanguage(data.language);
 
   try {
-    // 3. Send to Judge0 using synchronous `wait=true` mode
-    // (In production with heavy load, use async webhooks or polling)
-    const requestConfig: any = {
-      headers: {
-        'Content-Type': 'application/json',
-      }
-    };
+    // 3. Execute all test cases concurrently via Piston
+    const executionPromises = testCases.map(async (tc) => {
+      const response = await axios.post(PISTON_URL, {
+        language: pistonLang.language,
+        version: pistonLang.version,
+        files: [{ content: data.sourceCode }],
+        stdin: tc.input || ""
+      });
+      return { 
+        result: response.data, 
+        tc 
+      };
+    });
 
-    if (JUDGE0_API_KEY) {
-      requestConfig.headers['X-RapidAPI-Key'] = JUDGE0_API_KEY;
-      requestConfig.headers['X-RapidAPI-Host'] = JUDGE0_HOST;
-    }
+    const executionResults = await Promise.all(executionPromises);
 
-    const response = await axios.post(`${JUDGE0_URL}/submissions/batch?wait=true`, {
-      submissions
-    }, requestConfig);
-
-    const results = response.data; // Array of judge0 outputs
-    
     // 4. Aggregate the results into a final verdict.
-    // Logic: If EVERY test case passes, it's ACCEPTED. If ONE fails, we adopt that failure (e.g. WA or TLE).
     let finalVerdict: Verdict = 'ACCEPTED';
     let maxTime = 0;
     let maxMemory = 0;
 
-    for (let i = 0; i < results.length; i++) {
-      const res = results[i];
-      const statusId = res.status?.id || 0;
-      const verdict = mapJudge0StatusToVerdict(statusId);
-      
-      // Track peak resource usage across all test cases
-      if (res.time && parseFloat(res.time) > maxTime) maxTime = parseFloat(res.time);
-      if (res.memory && res.memory > maxMemory) maxMemory = res.memory;
+    const uiDetails = [];
 
-      // If we encounter any non-accepted state, override and break immediately.
-      // E.g. A compilation error or wrong answer on test case 2.
-      if (verdict !== 'ACCEPTED') {
-        finalVerdict = verdict;
-        break; // Stop evaluating further to save resources/time reporting
+    for (const execution of executionResults) {
+      const runData = execution.result.run;
+      const compileData = execution.result.compile;
+      const tc = execution.tc;
+
+      let statusId = 3; // Default to Accepted
+      let description = 'ACCEPTED';
+      let compileOutput = compileData ? compileData.output : '';
+      let stdout = runData && runData.stdout ? runData.stdout : '';
+      let stderr = runData && runData.stderr ? runData.stderr : '';
+
+      if (compileData && compileData.code !== 0) {
+        statusId = 6;
+        description = 'COMPILATION ERROR';
+        finalVerdict = 'COMPILATION_ERROR';
+      } else if (runData && runData.code !== 0) {
+        statusId = 11;
+        description = runData.signal ? `TIME LIMIT EXCEEDED (${runData.signal})` : 'RUNTIME ERROR';
+        finalVerdict = runData.signal ? 'TIME_LIMIT_EXCEEDED' : 'RUNTIME_ERROR';
+      } else {
+        // Compare stdout with expectedOutput
+        if (stdout.trim() !== tc.expectedOutput.trim()) {
+           statusId = 4;
+           description = 'WRONG ANSWER';
+           finalVerdict = 'WRONG_ANSWER';
+        }
+      }
+
+      uiDetails.push({
+        status: { id: statusId, description: description },
+        compile_output: compileOutput,
+        stdout: stdout,
+        stderr: stderr,
+        time: '0.05', // Piston v2 doesn't expose strict runtime metadata by default
+        memory: 0
+      });
+
+      if (finalVerdict !== 'ACCEPTED') {
+        break; // Stop evaluating further to save UI clutter
       }
     }
 
@@ -131,22 +126,22 @@ export async function processSubmission(userId: string, problemId: string, data:
     let gamificationInfo = undefined;
     if (finalVerdict === 'ACCEPTED') {
       const { awardPointsForSolve } = require('../users/user.service');
-      const difficulty = (problem as any).difficulty || 'EASY'; // Fallback depending on Prisma model shape
+      const difficulty = (problem as any).difficulty || 'EASY';
       gamificationInfo = await awardPointsForSolve(userId, problemId, difficulty);
     }
 
-    // 6. Return the detailed results so the UI can draw the console
+    // 6. Return the detailed results identically mapped so the UI doesn't break
     return {
       submissionId: savedSubmission.id,
       verdict: finalVerdict,
       runtime: maxTime,
       memory: maxMemory,
-      gamification: gamificationInfo, // Sends +10 points UI back 
-      details: results, // Full Judge0 batch output for the frontend console drawer
+      gamification: gamificationInfo, 
+      details: uiDetails, 
     };
 
   } catch (err: any) {
-    console.error('Judge0 Error:', err.response?.data || err.message);
+    console.error('Piston Execution Error:', err.response?.data || err.message);
     throw new AppError('Code Execution Engine is unavailable.', 503);
   }
 }
