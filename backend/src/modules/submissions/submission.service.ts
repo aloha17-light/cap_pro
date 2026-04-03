@@ -11,17 +11,99 @@ import { AppError } from '../../lib/errors';
 import { SubmitCodeInput } from './submission.schema';
 import { Language, Verdict } from '@prisma/client';
 
-const PISTON_URL = 'https://emkc.org/api/v2/piston/execute';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+import * as fs from 'fs';
+import * as path from 'path';
+import { v4 as uuidv4 } from 'uuid';
 
-// Maps our Prisma Language Enums to Piston Language strings
-function getPistonLanguage(lang: Language): { language: string, version: string } {
-  switch (lang) {
-    case 'C': return { language: 'c', version: '10.2.0' };
-    case 'CPP': return { language: 'cpp', version: '10.2.0' };
-    case 'JAVA': return { language: 'java', version: '15.0.2' };
-    case 'PYTHON': return { language: 'python', version: '3.10.0' };
-    default: throw new AppError('Unsupported Language', 400);
+const execAsync = promisify(exec);
+
+async function executeLocally(language: Language, sourceCode: string, input: string) {
+  const runId = uuidv4();
+  // Ensure the app has a tmp directory, Docker alpine has /tmp
+  const tmpDir = path.join('/tmp', runId);
+  fs.mkdirSync(tmpDir, { recursive: true });
+
+  let stdout = '';
+  let stderr = '';
+  let compileOutput = '';
+  let code = 0;
+  let signal = '';
+
+  try {
+    const inputPath = path.join(tmpDir, 'input.txt');
+    fs.writeFileSync(inputPath, input);
+
+    if (language === 'PYTHON') {
+      const scriptPath = path.join(tmpDir, 'main.py');
+      fs.writeFileSync(scriptPath, sourceCode);
+      
+      try {
+        const result = await execAsync(`python3 ${scriptPath} < ${inputPath}`, { timeout: 3000 });
+        stdout = result.stdout;
+        stderr = result.stderr;
+      } catch (err: any) {
+        stdout = err.stdout || '';
+        stderr = err.stderr || err.message || '';
+        code = err.code || 1;
+        if (err.killed) signal = 'SIGTERM';
+      }
+    } else if (language === 'CPP' || language === 'C') {
+      const ext = language === 'CPP' ? 'cpp' : 'c';
+      const compiler = language === 'CPP' ? 'g++' : 'gcc';
+      const scriptPath = path.join(tmpDir, `main.${ext}`);
+      const outPath = path.join(tmpDir, 'a.out');
+      fs.writeFileSync(scriptPath, sourceCode);
+
+      try {
+        await execAsync(`${compiler} ${scriptPath} -o ${outPath}`);
+      } catch (err: any) {
+        compileOutput = err.stderr || err.message;
+        code = 1;
+        return { stdout, stderr, code, compileOutput, signal };
+      }
+
+      try {
+        const result = await execAsync(`${outPath} < ${inputPath}`, { timeout: 3000 });
+        stdout = result.stdout;
+        stderr = result.stderr;
+      } catch (err: any) {
+        stdout = err.stdout || '';
+        stderr = err.stderr || err.message || '';
+        code = err.code || 1;
+        if (err.killed) signal = 'SIGTERM';
+      }
+    } else if (language === 'JAVA') {
+      const scriptPath = path.join(tmpDir, 'Solution.java');
+      fs.writeFileSync(scriptPath, sourceCode);
+
+      try {
+        await execAsync(`javac ${scriptPath}`);
+      } catch (err: any) {
+        compileOutput = err.stderr || err.message;
+        code = 1;
+        return { stdout, stderr, code, compileOutput, signal };
+      }
+
+      try {
+        const result = await execAsync(`java -cp ${tmpDir} Solution < ${inputPath}`, { timeout: 3000 });
+        stdout = result.stdout;
+        stderr = result.stderr;
+      } catch (err: any) {
+        stdout = err.stdout || '';
+        stderr = err.stderr || err.message || '';
+        code = err.code || 1;
+        if (err.killed) signal = 'SIGTERM';
+      }
+    } else {
+      throw new Error("Unsupported local execution language");
+    }
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
   }
+
+  return { stdout, stderr, code, compileOutput, signal };
 }
 
 export async function processSubmission(userId: string, problemId: string, data: SubmitCodeInput) {
@@ -40,52 +122,43 @@ export async function processSubmission(userId: string, problemId: string, data:
     throw new AppError('Problem has no test cases to evaluate against.', 500);
   }
 
-  // 2. Prepare for Piston Execution
-  const pistonLang = getPistonLanguage(data.language);
-
   try {
-    // 3. Execute all test cases concurrently via Piston
+    // 2. Execute all test cases consecutively or concurrently natively!
+    // We'll execute concurrently to save time
     const executionPromises = testCases.map(async (tc) => {
-      const response = await axios.post(PISTON_URL, {
-        language: pistonLang.language,
-        version: pistonLang.version,
-        files: [{ content: data.sourceCode }],
-        stdin: tc.input || ""
-      });
-      return { 
-        result: response.data, 
-        tc 
-      };
+      const runResult = await executeLocally(data.language, data.sourceCode, tc.input || '');
+      return { result: runResult, tc };
     });
 
     const executionResults = await Promise.all(executionPromises);
 
-    // 4. Aggregate the results into a final verdict.
+    // 3. Aggregate the results into a final verdict.
     let finalVerdict: Verdict = 'ACCEPTED';
-    let maxTime = 0;
+    let maxTime = 0; // Local exec doesn't easily expose high precision cpu time without wrapper
     let maxMemory = 0;
 
     const uiDetails = [];
 
     for (const execution of executionResults) {
-      const runData = execution.result.run;
-      const compileData = execution.result.compile;
+      const res = execution.result;
       const tc = execution.tc;
 
       let statusId = 3; // Default to Accepted
       let description = 'ACCEPTED';
-      let compileOutput = compileData ? compileData.output : '';
-      let stdout = runData && runData.stdout ? runData.stdout : '';
-      let stderr = runData && runData.stderr ? runData.stderr : '';
+      let compileOutput = res.compileOutput;
+      
+      // Ensure we treat `null` expected outputs gracefully, UI expects strings
+      let stdout = res.stdout || '';
+      let stderr = res.stderr || '';
 
-      if (compileData && compileData.code !== 0) {
+      if (compileOutput) {
         statusId = 6;
         description = 'COMPILATION ERROR';
         finalVerdict = 'COMPILATION_ERROR';
-      } else if (runData && runData.code !== 0) {
+      } else if (res.code !== 0) {
         statusId = 11;
-        description = runData.signal ? `TIME LIMIT EXCEEDED (${runData.signal})` : 'RUNTIME ERROR';
-        finalVerdict = runData.signal ? 'TIME_LIMIT_EXCEEDED' : 'RUNTIME_ERROR';
+        description = res.signal ? `TIME LIMIT EXCEEDED (${res.signal})` : 'RUNTIME ERROR';
+        finalVerdict = res.signal ? 'TIME_LIMIT_EXCEEDED' : 'RUNTIME_ERROR';
       } else {
         // Compare stdout with expectedOutput
         if (stdout.trim() !== tc.expectedOutput.trim()) {
@@ -100,7 +173,7 @@ export async function processSubmission(userId: string, problemId: string, data:
         compile_output: compileOutput,
         stdout: stdout,
         stderr: stderr,
-        time: '0.05', // Piston v2 doesn't expose strict runtime metadata by default
+        time: '0.05', 
         memory: 0
       });
 
@@ -109,7 +182,7 @@ export async function processSubmission(userId: string, problemId: string, data:
       }
     }
 
-    // 5. Save the Submission to our database tracking history
+    // 4. Save the Submission to our database tracking history
     const savedSubmission = await prisma.submission.create({
       data: {
         userId,
@@ -122,7 +195,7 @@ export async function processSubmission(userId: string, problemId: string, data:
       }
     });
 
-    // 5.5 Phase 7 gamification hook
+    // 4.5 Phase 7 gamification hook
     let gamificationInfo = undefined;
     if (finalVerdict === 'ACCEPTED') {
       const { awardPointsForSolve } = require('../users/user.service');
@@ -130,7 +203,7 @@ export async function processSubmission(userId: string, problemId: string, data:
       gamificationInfo = await awardPointsForSolve(userId, problemId, difficulty);
     }
 
-    // 6. Return the detailed results identically mapped so the UI doesn't break
+    // 5. Return the detailed results identically mapped so the UI doesn't break
     return {
       submissionId: savedSubmission.id,
       verdict: finalVerdict,
@@ -141,9 +214,8 @@ export async function processSubmission(userId: string, problemId: string, data:
     };
 
   } catch (err: any) {
-    console.error('Piston Execution Error:', err.response?.data || err.message);
-    const detail = err.response?.data?.message || err.message || 'Unknown network error';
-    throw new AppError(`Code Execution Engine is unavailable: ${detail}`, 503);
+    console.error('Local Execution Error:', err.message);
+    throw new AppError(`Code Execution Engine failed: ${err.message}`, 503);
   }
 }
 

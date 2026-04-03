@@ -13,8 +13,9 @@ RUN npm run build
 
 FROM node:20-alpine
 
-# Install OpenSSL in the final production container as well
-RUN apk add --no-cache openssl
+# Install OpenSSL, Python, C++, and Java for local execution
+RUN apk add --no-cache openssl python3 gcc g++ musl-dev openjdk11
+
 
 WORKDIR /app
 COPY --from=builder /app/node_modules ./node_modules
