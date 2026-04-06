@@ -21,6 +21,7 @@ export default function DashboardPage() {
   const [leaderboard, setLeaderboard] = useState<any[]>([]);
   const [dueReviews, setDueReviews] = useState<any[]>([]);
   const [isLoadingStats, setIsLoadingStats] = useState(true);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
   // Initialize auth state from localStorage on mount
   useEffect(() => {
@@ -79,20 +80,47 @@ export default function DashboardPage() {
             <h1 className="text-xl font-bold bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent flex items-center gap-2">
               <Code2 size={24} className="text-indigo-400" /> CodeForge
             </h1>
-            <div className="flex items-center gap-4">
-              <span className="text-gray-400 text-sm">
-                Welcome back,{' '}
-                <span className="text-indigo-300 font-bold">{user.username}</span>
-              </span>
-              <button
-                onClick={() => {
-                  logout();
-                  router.push('/login');
-                }}
-                className="px-4 py-2 text-sm text-gray-400 hover:text-white border border-gray-800 hover:bg-gray-800 rounded-lg transition-all duration-200"
+            <div className="relative">
+              <button 
+                onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold tracking-wider hover:opacity-90 transition-opacity focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-[#0a0a0a]"
               >
-                Sign Out
+                KKB
               </button>
+
+              <div 
+                className={`absolute right-0 mt-3 w-64 bg-[#111111] border border-gray-800 rounded-xl shadow-2xl py-2 z-50 transition-all duration-200 origin-top-right ${
+                  isDropdownOpen 
+                    ? 'opacity-100 transform scale-100 translate-y-0 pointer-events-auto' 
+                    : 'opacity-0 transform scale-95 -translate-y-2 pointer-events-none'
+                }`}
+              >
+                <div className="px-4 py-3 border-b border-gray-800">
+                  <p className="text-sm font-semibold text-white">Kshitish Kumar Behera</p>
+                  <p className="text-xs text-gray-400 truncate mt-0.5">{user.email || 'kshitishkumarbehera28@gmail.com'}</p>
+                </div>
+                
+                <div className="py-2">
+                  <button className="w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-800 hover:text-white transition-colors">
+                    Settings
+                  </button>
+                  <button className="w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-800 hover:text-white transition-colors">
+                    Editor Preferences
+                  </button>
+                </div>
+                
+                <div className="border-t border-gray-800 py-2">
+                  <button
+                    onClick={() => {
+                      logout();
+                      router.push('/login');
+                    }}
+                    className="w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-colors"
+                  >
+                    Sign Out
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
