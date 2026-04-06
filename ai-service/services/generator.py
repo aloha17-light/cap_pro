@@ -77,6 +77,10 @@ def generate_problem_with_ai(topic: str, difficulty: str, previous_topics: str =
         content = content[:-3]
     content = content.strip()
 
+    # Sanitize invalid escape sequences (common in LLM math/regex text)
+    import re
+    content = re.sub(r'\\(?!["\\/bfnrtu])', r'\\\\', content)
+
     return json.loads(content)
 
 
@@ -132,5 +136,9 @@ Review the code now. Return ONLY valid JSON, no markdown."""
     if content.endswith("```"):
         content = content[:-3]
     content = content.strip()
+
+    # Sanitize invalid escape sequences (common in LLM math/regex text)
+    import re
+    content = re.sub(r'\\(?!["\\/bfnrtu])', r'\\\\', content)
 
     return json.loads(content)
