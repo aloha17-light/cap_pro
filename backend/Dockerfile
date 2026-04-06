@@ -13,8 +13,8 @@ RUN npm run build
 
 FROM node:20-alpine
 
-# Install OpenSSL, Python, C++, and Java for local execution
-RUN apk add --no-cache openssl python3 gcc g++ musl-dev openjdk11
+# Install OpenSSL and Python3 (Lightweight fallback execution)
+RUN apk add --no-cache openssl python3
 
 
 WORKDIR /app

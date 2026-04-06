@@ -20,7 +20,7 @@ import axios from 'axios';
  * All API calls should use this instance instead of raw axios.
  */
 const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api',
+  baseURL: process.env.NODE_ENV === 'production' ? '/api' : (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'),
   headers: {
     'Content-Type': 'application/json',
   },
