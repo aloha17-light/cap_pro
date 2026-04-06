@@ -131,26 +131,26 @@ export default function DashboardPage() {
         
         {/* KPI Stats Hero */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-6 relative overflow-hidden group">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/10 rounded-full blur-3xl -mr-10 -mt-10 transition-all group-hover:bg-indigo-500/20" />
+          <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-6 relative overflow-hidden group transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:shadow-indigo-500/10 hover:border-gray-700">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/10 rounded-full blur-3xl -mr-10 -mt-10 transition-all duration-500 group-hover:bg-indigo-500/20 group-hover:scale-110" />
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 bg-indigo-500/10 rounded-xl flex items-center justify-center border border-indigo-500/20">
                 <Trophy className="w-5 h-5 text-indigo-400" />
               </div>
               <h3 className="text-gray-400 font-medium">Global Rating</h3>
             </div>
-            <p className="text-4xl font-bold text-white tracking-tight">{user.rating} <span className="text-sm text-indigo-500 font-normal">EL0</span></p>
+            <p className="text-4xl font-bold text-white tracking-tight relative z-10">{user.rating} <span className="text-sm text-indigo-500 font-normal">EL0</span></p>
           </div>
 
-          <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-6 relative overflow-hidden group">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-orange-500/10 rounded-full blur-3xl -mr-10 -mt-10 transition-all group-hover:bg-orange-500/20" />
+          <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-6 relative overflow-hidden group transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:shadow-orange-500/10 hover:border-gray-700">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-orange-500/10 rounded-full blur-3xl -mr-10 -mt-10 transition-all duration-500 group-hover:bg-orange-500/20 group-hover:scale-110" />
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 bg-orange-500/10 rounded-xl flex items-center justify-center border border-orange-500/20">
                 <Flame className="w-5 h-5 text-orange-400" />
               </div>
               <h3 className="text-gray-400 font-medium">Daily Streak</h3>
             </div>
-            <p className="text-4xl font-bold text-white tracking-tight">{user.streak} <span className="text-sm text-orange-500 font-normal">Days</span></p>
+            <p className="text-4xl font-bold text-white tracking-tight relative z-10">{user.streak} <span className="text-sm text-orange-500 font-normal">Days</span></p>
           </div>
 
           {/* Action Callout */}
@@ -178,18 +178,27 @@ export default function DashboardPage() {
               <span className="text-sm text-gray-500">{dueReviews.length} Tasks Scheduled</span>
             </div>
 
-            <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl overflow-hidden min-h-[300px]">
+            <div className={`bg-[#0a0a0a] border border-gray-800 rounded-2xl overflow-hidden ${isLoadingStats || dueReviews.length > 0 ? 'min-h-[300px]' : ''}`}>
               {isLoadingStats ? (
                 <div className="flex items-center justify-center h-full min-h-[300px]">
                   <Loader2 className="animate-spin text-indigo-500" size={32} />
                 </div>
               ) : dueReviews.length === 0 ? (
-                <div className="flex flex-col items-center justify-center text-center h-full min-h-[300px] p-8">
-                  <div className="w-16 h-16 bg-gray-900 rounded-full flex items-center justify-center mb-4">
+                <div className="flex flex-col items-center justify-center text-center p-8 py-12">
+                  <div className="w-16 h-16 bg-gray-900/80 rounded-full flex items-center justify-center mb-5 border border-green-500/10 shadow-[0_0_15px_-3px_rgba(34,197,94,0.15)]">
                     <CheckCircle2 size={32} className="text-green-500" />
                   </div>
-                  <h3 className="text-lg font-bold text-white mb-1">You're all caught up!</h3>
-                  <p className="text-gray-500 text-sm max-w-sm">There are no spaced repetition problems due for review today. Enjoy your day off or generate a new challenge.</p>
+                  <h3 className="text-lg font-bold text-white mb-2">You're all caught up!</h3>
+                  <p className="text-gray-400 text-sm max-w-sm mb-6 leading-relaxed">There are no spaced repetition problems due for review today. Enjoy your day off or generate a new challenge.</p>
+                  
+                  <Link 
+                    href="/generate"
+                    className="group flex items-center gap-2 px-5 py-2.5 bg-[#111] hover:bg-[#161616] border border-gray-800 hover:border-gray-700 text-gray-300 hover:text-white text-sm font-semibold rounded-xl transition-all duration-200"
+                  >
+                    <BookOpen size={16} className="text-indigo-400 group-hover:hidden" />
+                    <span>Explore a new algorithm</span>
+                    <ArrowRight size={16} className="hidden group-hover:block text-indigo-400" />
+                  </Link>
                 </div>
               ) : (
                 <ul className="divide-y divide-gray-800/60">
