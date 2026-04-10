@@ -33,7 +33,7 @@ async function executeLocally(language: Language, sourceCode: string, input: str
 
   try {
     const inputPath = path.join(tmpDir, 'input.txt');
-    fs.writeFileSync(inputPath, input);
+    fs.writeFileSync(inputPath, String(input));
 
     if (language === 'PYTHON') {
       const scriptPath = path.join(tmpDir, 'main.py');
@@ -126,7 +126,7 @@ export async function processSubmission(userId: string, problemId: string, data:
     // 2. Execute all test cases consecutively or concurrently natively!
     // We'll execute concurrently to save time
     const executionPromises = testCases.map(async (tc) => {
-      const runResult = await executeLocally(data.language, data.sourceCode, tc.input || '');
+      const runResult = await executeLocally(data.language, data.sourceCode, String(tc.input || ''));
       return { result: runResult, tc };
     });
 
