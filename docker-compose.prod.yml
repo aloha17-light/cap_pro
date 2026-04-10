@@ -37,6 +37,17 @@ services:
     networks:
       - prod-network
 
+  collaboration-server:
+    build:
+      context: ./collaboration-server
+      dockerfile: Dockerfile
+    container_name: codeforge-collab
+    restart: always
+    ports:
+      - "1234:1234"
+    networks:
+      - prod-network
+
 networks:
   prod-network:
     driver: bridge

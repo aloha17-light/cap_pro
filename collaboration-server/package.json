@@ -1,0 +1,14 @@
+{
+  "name": "codeforge-collaboration-server",
+  "version": "1.0.0",
+  "description": "Self-hosted Yjs WebSocket server for real-time collaborative code editing (CRDT-based). Built for CodeForge M.Sc. project.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "ws": "^8.16.0",
+    "y-websocket": "^2.0.4",
+    "yjs": "^13.6.0"
+  }
+}

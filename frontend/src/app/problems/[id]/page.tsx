@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState, use } from 'react';
+import { useEffect, useState, use, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { notFound } from 'next/navigation';
 import api from '@/lib/api';
 import EditorWorkspace from '@/components/editor/EditorWorkspace';
@@ -21,8 +22,10 @@ interface Problem {
   constraints: string;
 }
 
-export default function ProblemPage({ params }: { params: Promise<{ id: string }> }) {
+function ProblemPageContent({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
+  const searchParams = useSearchParams();
+  const roomId = searchParams.get('roomId');
   const [problem, setProblem] = useState<Problem | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -149,9 +152,23 @@ export default function ProblemPage({ params }: { params: Promise<{ id: string }
 
       {/* Right Pane: Monaco IDE Editor (Dynamic Width: 60%) */}
       <div className="w-3/5 h-full">
-        <EditorWorkspace problemId={problem.id} />
+        <EditorWorkspace problemId={problem.id} roomId={roomId} />
       </div>
 
     </div>
+  );
+}
+
+// Wrap in Suspense boundary required by Next.js for useSearchParams
+export default function ProblemPage({ params }: { params: Promise<{ id: string }> }) {
+  return (
+    <Suspense fallback={
+      <div className="h-screen bg-gray-950 flex flex-col items-center justify-center gap-4">
+        <div className="w-10 h-10 border-t-2 border-indigo-500 rounded-full animate-spin"></div>
+        <p className="text-gray-400 animate-pulse text-sm">Building IDE Workspace...</p>
+      </div>
+    }>
+      <ProblemPageContent params={params} />
+    </Suspense>
   );
 }
