@@ -6,6 +6,7 @@ import Editor, { useMonaco } from '@monaco-editor/react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, Play, SkipBack, ChevronLeft, ChevronRight, SkipForward, Loader2, Code2, Cpu } from 'lucide-react';
 import axios from 'axios';
+import api from '@/lib/api';
 
 // The default code matching the mock trace
 const DEFAULT_CODE = `def factorial(n):
@@ -75,10 +76,10 @@ export default function VisualizePage() {
     }
 
     try {
-      const res = await axios.post('/api/trace', { code });
+      const res = await api.post('/submissions/trace', { sourceCode: code });
       
-      if (res.data.success && res.data.data.trace) {
-        setTraceData(res.data.data.trace);
+      if (res.data.success && res.data.data) {
+        setTraceData(res.data.data);
       } else {
         setError("Failed to generate execution trace. Invalid response format.");
       }
