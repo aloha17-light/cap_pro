@@ -10,7 +10,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/stores/authStore';
-import { Trophy, Flame, Calendar, Code2, AlertTriangle, ArrowRight, BookOpen, Crown, Loader2, CheckCircle2 } from 'lucide-react';
+import { Trophy, Flame, Calendar, Code2, AlertTriangle, ArrowRight, BookOpen, Crown, Loader2, CheckCircle2, PlayCircle } from 'lucide-react';
 import api from '@/lib/api';
 import Link from 'next/link';
 
@@ -164,6 +164,28 @@ export default function DashboardPage() {
               Generate Problem <ArrowRight size={16} />
             </Link>
           </div>
+        </div>
+
+        {/* Visualizer CTA - Full Width Row */}
+        <div className="bg-gradient-to-r from-[#0f0f13] to-[#120f18] border border-gray-800 rounded-2xl p-8 flex flex-col md:flex-row items-center justify-between gap-6 group hover:border-purple-500/30 transition-all">
+          <div className="flex items-center gap-5">
+            <div className="w-16 h-16 bg-purple-500/10 rounded-2xl flex items-center justify-center border border-purple-500/20 group-hover:scale-105 transition-transform">
+              <PlayCircle className="w-8 h-8 text-purple-400" />
+            </div>
+            <div>
+              <h2 className="text-2xl font-bold text-white mb-2">Code Sandbox & Visualizer</h2>
+              <p className="text-gray-400 max-w-xl">
+                Paste any Python algorithm and step through its execution in real-time. 
+                Watch variable memory states change dynamically line by line.
+              </p>
+            </div>
+          </div>
+          <Link 
+            href="/visualize"
+            className="shrink-0 flex items-center justify-center gap-2 px-8 py-3.5 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-xl transition-all shadow-lg shadow-purple-500/20 group-hover:shadow-purple-500/40"
+          >
+            Launch Visualizer <ArrowRight size={18} />
+          </Link>
         </div>
 
         {/* Dash Grid */}

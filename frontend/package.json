@@ -13,6 +13,7 @@
     "@prisma/client": "^7.5.0",
     "@tanstack/react-query": "^5.95.0",
     "axios": "^1.13.6",
+    "framer-motion": "^12.38.0",
     "lucide-react": "^1.7.0",
     "next": "16.2.1",
     "react": "19.2.4",
