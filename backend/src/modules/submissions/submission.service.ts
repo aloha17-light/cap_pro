@@ -275,7 +275,8 @@ export async function generateTrace(sourceCode: string) {
   const scriptPath = path.join(tmpDir, 'main.py');
   fs.writeFileSync(scriptPath, sourceCode);
 
-  const tracerPath = path.resolve(__dirname, '../../utils/tracer.py');
+  // Safely resolve the Python tracer relative to the project root, regardless of if we're in /src or /dist 
+  const tracerPath = path.join(process.cwd(), 'src', 'utils', 'tracer.py');
 
   try {
     // Run the tracer script passing the path to the user's script
