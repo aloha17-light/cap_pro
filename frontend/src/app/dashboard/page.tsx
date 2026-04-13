@@ -154,6 +154,9 @@ export default function DashboardPage() {
               <h3 className="text-gray-400 font-medium">Daily Streak</h3>
             </div>
             <p className="text-4xl font-bold text-white tracking-tight relative z-10">{user.streak} <span className="text-sm text-orange-500 font-normal">Days</span></p>
+            {(user as any).maxStreak > 0 && (
+              <p className="text-xs text-gray-600 mt-1 relative z-10">Best: <span className="text-orange-400 font-bold">{(user as any).maxStreak}</span> days</p>
+            )}
           </div>
 
           {/* Action Callout */}

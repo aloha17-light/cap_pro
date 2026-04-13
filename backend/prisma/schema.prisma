@@ -15,9 +15,8 @@ generator client {
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 // =============================================================================
@@ -83,7 +82,8 @@ model User {
   username     String   @unique
   passwordHash String   @map("password_hash")
   rating       Int      @default(0)     // Composite score: problems × difficulty + quality + streak
-  streak       Int      @default(0)     // Consecutive active days
+  streak       Int      @default(0)     // Consecutive daily login streak (resets if a day is skipped)
+  maxStreak    Int      @default(0)     @map("max_streak") // All-time highest streak
   lastActiveAt DateTime? @map("last_active_at")
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt      @map("updated_at")

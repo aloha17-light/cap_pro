@@ -43,6 +43,7 @@ interface UserResponse {
   username: string;
   rating: number;
   streak: number;
+  maxStreak: number;
   lastActiveAt: Date | null;
   createdAt: Date;
 }
@@ -86,6 +87,7 @@ function sanitizeUser(user: {
   passwordHash: string;
   rating: number;
   streak: number;
+  maxStreak: number;
   lastActiveAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
@@ -188,11 +190,59 @@ export async function loginUser(data: LoginInput): Promise<AuthResponse> {
     throw UnauthorizedError('Invalid email or password');
   }
 
+  // =========================================================================
+  // Streak Logic (login-based):
+  //   - Same calendar day as lastActiveAt   → no change (already counted)
+  //   - Exactly 1 calendar day gap          → increment streak
+  //   - More than 1 calendar day gap / null → reset to 1 (missed a day)
+  //   - maxStreak always tracks the highest streak ever reached
+  // =========================================================================
+  const now = new Date();
+  // Strip time-of-day so we compare calendar dates only
+  const todayUTC = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+
+  let newStreak = user.streak;
+
+  if (user.lastActiveAt) {
+    const last = user.lastActiveAt;
+    const lastDayUTC = new Date(Date.UTC(last.getUTCFullYear(), last.getUTCMonth(), last.getUTCDate()));
+    const diffDays = Math.round((todayUTC.getTime() - lastDayUTC.getTime()) / 86_400_000);
+
+    if (diffDays === 0) {
+      // Already logged in today — keep the current streak
+      newStreak = user.streak;
+    } else if (diffDays === 1) {
+      // Logged in the very next day — increment
+      newStreak = user.streak + 1;
+    } else {
+      // Missed at least one day — reset
+      newStreak = 1;
+    }
+  } else {
+    // First ever login
+    newStreak = 1;
+  }
+
+  const newMaxStreak = Math.max(user.maxStreak, newStreak);
+
+  // Persist the updated streak and lastActiveAt
+  const updatedUser = await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      streak: newStreak,
+      maxStreak: newMaxStreak,
+      lastActiveAt: now,
+    },
+  });
+
+  // Invalidate the Redis cache so the dashboard shows fresh streak data
+  await invalidateUserProfile(user.id);
+
   // Generate JWT
   const token = generateToken(user.id);
 
   return {
-    user: sanitizeUser(user),
+    user: sanitizeUser(updatedUser),
     token,
   };
 }

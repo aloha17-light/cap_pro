@@ -245,13 +245,18 @@ export default function ProfilePage() {
           <div>
             <h2 className="text-3xl font-extrabold text-white tracking-tight">{user.username}</h2>
             <p className="text-gray-500 text-sm mt-1">{user.email}</p>
-            <div className="flex items-center gap-4 mt-3">
+            <div className="flex items-center gap-4 mt-3 flex-wrap">
               <span className="flex items-center gap-1.5 text-sm font-bold text-indigo-300">
                 <Trophy size={14} className="text-indigo-400" /> {user.rating} EL0
               </span>
               <span className="flex items-center gap-1.5 text-sm font-bold text-orange-300">
                 <Flame size={14} className="text-orange-400" /> {user.streak} Day Streak
               </span>
+              {(user as any).maxStreak > 0 && (
+                <span className="flex items-center gap-1.5 text-sm font-bold text-yellow-300">
+                  <Trophy size={14} className="text-yellow-400" /> Best: {(user as any).maxStreak} Days
+                </span>
+              )}
             </div>
           </div>
         </div>
