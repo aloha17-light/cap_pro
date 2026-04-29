@@ -24,6 +24,7 @@ dotenv.config();
  * Falls back to localhost with no password for local development.
  */
 const redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
+  db: 0, // Upstash free tier only supports database 0
   maxRetriesPerRequest: 3,
   retryStrategy(times: number) {
     // Exponential backoff: 2^times * 50ms, capped at 2 seconds
